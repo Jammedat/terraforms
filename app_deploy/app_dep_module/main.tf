@@ -47,6 +47,37 @@ resource "azurerm_public_ip" "example" {
   idle_timeout_in_minutes = 30
 }
 
+# Create Network Security Group (NSG) and Rules
+resource "azurerm_network_security_group" "nsg" {
+  name                = var.network_security_group_name
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  security_rule {
+    name                       = "Allow-HTTP"
+    priority                   = 1001
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "Allow-SSH"
+    priority                   = 1002
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
 # Create a network interface
 resource "azurerm_network_interface" "example" {
   name                = var.network_interface_name
@@ -60,6 +91,12 @@ resource "azurerm_network_interface" "example" {
     public_ip_address_id          = azurerm_public_ip.example.id
   }
   }
+
+# Associate NSG with Subnet
+resource "azurerm_subnet_network_security_group_association" "nsg_assoc" {
+  subnet_id                 = azurerm_subnet.example.id
+  network_security_group_id = azurerm_network_security_group.nsg.id
+}
 
 
 # Create a virtual machine
@@ -89,9 +126,44 @@ resource "azurerm_linux_virtual_machine" "example" {
     sku       = "18.04-LTS"
     version   = "latest"
   }
+  depends_on = [azurerm_public_ip.example]
+
 }
 
-data "azurerm_public_ip" "example" {
-  name                = azurerm_public_ip.example.name
-  resource_group_name = azurerm_linux_virtual_machine.example.resource_group_name
+# Use a null_resource to run provisioners after the VM is created
+resource "null_resource" "delay" {
+  provisioner "local-exec" {
+    command = "sleep 120"
+    
+  }
+  depends_on = [azurerm_linux_virtual_machine.example]
 }
+resource "null_resource" "provision" {
+    depends_on = [ null_resource.delay ]
+    
+
+  connection {
+    type        = "ssh"
+    user        = "adminuser"
+    private_key = file("~/.ssh/id_rsa") # Adjust path to your private key
+    host        = azurerm_public_ip.example.ip_address
+    timeout     = "5m"
+  }
+
+  provisioner "file" {
+    source      = "app.py"
+    destination = "/home/adminuser/app.py"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "echo 'Hello, World! from remote'",
+      "sudo apt-get update -y",
+      "sudo apt-get install -y python3-pip",
+      "cd /tmp",
+      "sudo pip3 install flask",
+      "sudo python3 app.py &",
+    ]
+  }
+}
+
