@@ -1,0 +1,3 @@
+The Nautilus DevOps team is working on automating infrastructure deployment using AWS CloudFormation. As part of this effort, they need to create a CloudFormation stack that provisions an S3 bucket with versioning enabled.
+
+Create a CloudFormation stack named xfusion-stack using Terraform. This stack should contain an S3 bucket named xfusion-bucket-20379 as a resource, and the bucket must have versioning enabled. 
